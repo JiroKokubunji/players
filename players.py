@@ -1,71 +1,100 @@
 # -*- encoding: utf-8 -*-
 
 import importlib
+import argparse
+import time
+import yaml
+from pymongo import MongoClient
 from multiprocessing import Pool
-from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-
-"""
-model inform schema
-id
-category 'sklearn'
-module name
-class name
-initialize parameter
-grid search parameter
-
-transaction predict schema "classification"
-id
-project_id
-model_id
-accuracy
-precision
-recall
-f-value
-confusion matrix
-feature importance 
-
-transaction predict schema "regression"
-id
-project_id
-model_id
-mae
-mse
-rmse
-rsquare
-feature importance 
-"""
-
-models = [[1, 'sklearn.svm', 'SVC']
-          , [2, 'sklearn.ensemble', 'RandomForestClassifier']
-            ]
 
 
-def fit_and_predict(model, data, target):
-    module = importlib.import_module(model[1])
-    instance = getattr(module, model[2])()
-    X_train, X_test, y_train, y_test = train_test_split(data, target, test_size=0.33)
-    instance.fit(X_train, y_train)
-    y_pred = instance.predict(X_test)
-    print("{0}:accuracy {1}".format(model[2], accuracy_score(y_test, y_pred)))
+class Dispacher:
+    """
+    dispathcer of playsers, dispatch tasks to players
+    """
+    ANALYZE_COLLECTION_NAME = 'analyses'
+    PROJECT_COLLECTION_NAME = 'projects'
+    MODELS_COLLECTION = 'models'
+    ALGORITHM_COLLECTION_NAME = 'algorithms'
+    NUMBER_OF_MAX_PROCESS = 4
+
+    def __init__(self, db):
+        self.db = db
+
+    def dispatch(self):
+        while True:
+            players = self._prepare_players()
+            pool = Pool(processes=4)
+            pool.map(wrap_players, players)
+            pool.close()
+            print('process ended')
+            time.sleep(1)
+            break
+
+    def _prepare_players(self):
+        todos = self.db[self.ANALYZE_COLLECTION_NAME].find()
+        data_for_players = []
+        for todo in todos:
+            data_for_players.append(self._get_project_data(todo['project_id']))
+
+        players = []
+        for dfp in data_for_players:
+            model = self.db[self.MODELS_COLLECTION].find_one({'project_id': dfp['_id']})
+            algorithm = self.db[self.ALGORITHM_COLLECTION_NAME].find_one({'id': dfp['algorithm_id']})
+            players.append(Player(algorithm['module_name'], algorithm['class_name'], dfp['data'], dfp['data']))
+        return players
+
+    def _get_project_data(self, project_id):
+        return self.db[self.PROJECT_COLLECTION_NAME].find_one({'_id': project_id})
 
 
-def wrap_fit_ant_predict(args):
-    return fit_and_predict(*args)
 
-def main():
-    iris = load_iris()
-    data = iris.data
-    target = iris.target
+class Player:
 
-    pool = Pool(processes=4)
-    pool.map(wrap_fit_ant_predict, [(models[0], data, target), (models[1], data, target)])
-    pool.close()
+    TEST_SIZE = 0.33
+    def __init__(self, package_name, class_name, data, target):
+        self.package_name = package_name
+        self.class_name = class_name
+        self.data = data
+        self.target = target
 
-    print('process ended')
+    def play(self):
+        module = importlib.import_module(self.package_name)
+        instance = getattr(module, self.class_name)()
+        X_train, X_test, y_train, y_test = train_test_split(self.data, self.target, test_size=self.TEST_SIZE)
+        instance.fit(X_train, y_train)
+        y_pred = instance.predict(X_test)
+        # TODO
+        # print("{0}:accuracy {1}".format(model[2], accuracy_score(y_test, y_pred)))
+
+
+def wrap_players(args):
+    return Player(args[0], args[1], args[2], args[3]).play()
+
+
+def main(db):
+    dispatcher = Dispacher(db)
+    dispatcher.dispatch()
+
+
+def db(config):
+    con = MongoClient("mongodb://{0}".format(config['clients']['default']['hosts'][0]))
+    return con[config['clients']['default']['database']]
+
+
+def parse_config(environment):
+    with open('config/mongodb.yml') as f:
+        config = yaml.load(f)
+    return config[environment]
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(
+        description='The players is a app that run sklearn machine learning algorithms one by one. A data is provided by the Orchestra.')
 
+    parser.add_argument('-e', '--environment', help='specify environment', default='development')
+    args = parser.parse_args()
+    environment = args.environment
+    config = parse_config(environment)
+    main(db(config))
