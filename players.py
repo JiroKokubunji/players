@@ -8,11 +8,15 @@ from pymongo import MongoClient
 from multiprocessing import Pool
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+import pandas as pd
+from io import StringIO
+from bson.binary import Binary as BsonBinary
 
-ANALYZE_COLLECTION_NAME = 'analyses'
-PROJECT_COLLECTION_NAME = 'projects'
+ANALYSES_COLLECTION_NAME = 'analyses'
+PROJECTS_COLLECTION_NAME = 'projects'
+COLUMNS_COLLECTION_NAME = 'columns'
 MODELS_COLLECTION = 'models'
-ALGORITHM_COLLECTION_NAME = 'algorithms'
+ALGORITHMS_COLLECTION_NAME = 'algorithms'
 NUMBER_OF_MAX_PROCESS = 4
 
 class Dispacher:
@@ -25,7 +29,7 @@ class Dispacher:
 
     def dispatch(self):
         while True:
-            players = self._prepare_players()
+            players = self.__prepare_players()
             pool = Pool(processes=4)
             results = pool.map(wrap_players, players)
             print("results:{0}".format(results))
@@ -34,44 +38,52 @@ class Dispacher:
             time.sleep(1)
             break
 
-    def _prepare_players(self):
-        todos = self.db[ANALYZE_COLLECTION_NAME].find()
-        data_for_players = []
-        for todo in todos:
-            data_for_players.append(self._get_project_data(todo['project_id']))
-
+    def __prepare_players(self):
+        todos = self.db[ANALYSES_COLLECTION_NAME].find()
         players = []
-        for dfp in data_for_players:
-            model = self.db[MODELS_COLLECTION].find_one({'project_id': dfp['_id']})
-            algorithm = self.db[ALGORITHM_COLLECTION_NAME].find_one({'id': dfp['algorithm_id']})
-            players.append(Player(algorithm['module_name'], algorithm['class_name'], dfp['data'], dfp['data']))
+        for todo in todos:
+            project = self.__get_project_data(todo['project_id'])
+            columns = self.db[COLUMNS_COLLECTION_NAME].find_one({'project_id': todo['project_id']})
+            algorithm = self.db[ALGORITHMS_COLLECTION_NAME].find_one({'_id': todo['algorithm_id']})
+            data = StringIO(BsonBinary(project['file']).decode())
+            players.append(Player(algorithm['module_name']
+                                  , algorithm['class_name']
+                                  , data
+                                  , columns['train_columns']
+                                  , columns['target_columns']))
         return players
 
-    def _get_project_data(self, project_id):
-        return self.db[PROJECT_COLLECTION_NAME].find_one({'_id': project_id})
+    def __get_project_data(self, project_id):
+        return self.db[PROJECTS_COLLECTION_NAME].find_one({'_id': project_id})
 
 
 class Player:
 
     TEST_SIZE = 0.33
 
-    def __init__(self, package_name, class_name, data, target):
+    def __init__(self, package_name, class_name, data, train_columns, target_columns):
         self.package_name = package_name
         self.class_name = class_name
         self.data = data
-        self.target = target
+        self.train_columns = train_columns
+        self.target_columns = target_columns
+
 
     def play(self):
         module = importlib.import_module(self.package_name)
         instance = getattr(module, self.class_name)()
-        X_train, X_test, y_train, y_test = train_test_split(self.data, self.target, test_size=self.TEST_SIZE)
+        df = pd.read_csv(self.data)
+        train = df.loc[:, self.train_columns.split(',')]
+        target = df.loc[:, self.target_columns.strip()]
+        X_train, X_test, y_train, y_test = train_test_split(train, target, test_size=self.TEST_SIZE)
         instance.fit(X_train, y_train)
         y_pred = instance.predict(X_test)
         return accuracy_score(y_test, y_pred)
 
 
 def wrap_players(args):
-    return Player(args[0], args[1], args[2], args[3]).play()
+    return args.play()
+    # return Player(args[0], args[1], args[2], args[3], args[4]).play()
 
 
 def main(db):
