@@ -74,7 +74,7 @@ class IPreprocess(metaclass=abc.ABCMeta):
 class OneHotEncoderPreProcessor(IPreprocess):
     def do(self, data):
         enc = OneHotEncoder()
-        transformed = enc.fit_transform(data.reshape(data.reshape[0], -1))
+        transformed = enc.fit_transform(data.reshape(-1, 1))
         return enc, transformed.toarray()
 
 
