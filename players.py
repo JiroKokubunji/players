@@ -11,6 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, recall_score, f1_score
 from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 import pandas as pd
+import numpy as np
 from io import StringIO
 
 ANALYSES_COLLECTION_NAME = 'analyses'
@@ -73,14 +74,14 @@ class IPreprocess(metaclass=abc.ABCMeta):
 class OneHotEncoderPreProcessor(IPreprocess):
     def do(self, data):
         enc = OneHotEncoder()
-        transformed = enc.fit_transform(data.values.reshape(-1, 1))
+        transformed = enc.fit_transform(data.reshape(data.reshape[0], -1))
         return enc, transformed.toarray()
 
 
 class LabelEncoderPreProcessor(IPreprocess):
     def do(self, data):
         enc = LabelEncoder()
-        return enc, enc.fit_transform(data.values.reshape(-1, 1))
+        return enc, enc.fit_transform(data.ravel())
 
 
 class PreprocessorFactory:
@@ -103,7 +104,7 @@ class Preprocessor:
         for order in orders:
             pp_data = self.db[PREPROCESSED_DATA_COLLECTION_NAME].find_one({'_id': self.preprocessed_data_id})
             df = pd.read_csv(StringIO(pp_data['data']))
-            processor, processed_data = PreprocessorFactory.create(order['type']).do(df.loc[:, order['column']])
+            processor, processed_data = PreprocessorFactory.create(order['type']).do(df.loc[:, order['column']].values)
             columns_name = ["{0}.{1}".format(order['column'], c) for c in range(0, len(processed_data.shape))]
             df_1 = pd.DataFrame(processed_data, columns=columns_name)
             merged = pd.concat([df, df_1], axis=1)
