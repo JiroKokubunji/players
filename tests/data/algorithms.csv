@@ -1,2 +1,2 @@
 module_name,class_name
-sklearn.svm,SVC
+sklearn.ensemble,RandomForestClassifier

@@ -2,21 +2,25 @@
 
 import importlib
 import argparse
-import time
+import abc
 import yaml
+import pickle
 from pymongo import MongoClient
 from multiprocessing import Pool
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, recall_score, f1_score
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 import pandas as pd
 from io import StringIO
-from bson.binary import Binary as BsonBinary
 
 ANALYSES_COLLECTION_NAME = 'analyses'
 PROJECTS_COLLECTION_NAME = 'projects'
 COLUMNS_COLLECTION_NAME = 'columns'
 MODELS_COLLECTION = 'models'
 ALGORITHMS_COLLECTION_NAME = 'algorithms'
+CLASSIFICATION_RESULTS_COLLECTION_NAME = 'classification_results'
+PREPROCESSED_DATA_COLLECTION_NAME = 'preprocess_data'
+PREPROCESS_ORDER_COLLECTION_NAME = 'preprocess_order'
 NUMBER_OF_MAX_PROCESS = 4
 
 class Dispacher:
@@ -32,58 +36,113 @@ class Dispacher:
             players = self.__prepare_players()
             pool = Pool(processes=4)
             results = pool.map(wrap_players, players)
-            print("results:{0}".format(results))
+            for result in results:
+                self.__record_result(result)
             pool.close()
-            print('process ended')
-            time.sleep(1)
+            pool.join()
             break
+
+    def __record_result(self, result):
+        self.db[CLASSIFICATION_RESULTS_COLLECTION_NAME].insert_one(result)
 
     def __prepare_players(self):
         todos = self.db[ANALYSES_COLLECTION_NAME].find()
         players = []
         for todo in todos:
-            project = self.__get_project_data(todo['project_id'])
-            columns = self.db[COLUMNS_COLLECTION_NAME].find_one({'project_id': todo['project_id']})
+            preprocessed_data = self.db[PREPROCESSED_DATA_COLLECTION_NAME].find_one({'_id': todo['preprocessed_data_id']})
+            columns = list(self.db[COLUMNS_COLLECTION_NAME].find({'preprocessed_data_id': preprocessed_data['_id']}))
             algorithm = self.db[ALGORITHMS_COLLECTION_NAME].find_one({'_id': todo['algorithm_id']})
-            data = StringIO(BsonBinary(project['file']).decode())
-            players.append(Player(algorithm['module_name']
+            players.append(Player(todo['_id']
+                                  , algorithm['module_name']
                                   , algorithm['class_name']
-                                  , data
-                                  , columns['train_columns']
-                                  , columns['target_columns']))
+                                  , preprocessed_data['data']
+                                  , [c['name'] for c in columns if not c['target']]
+                                  , [c['name'] for c in columns if c['target']]))
         return players
 
     def __get_project_data(self, project_id):
         return self.db[PROJECTS_COLLECTION_NAME].find_one({'_id': project_id})
 
 
+class IPreprocess(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def do(self):
+        pass
+
+
+class OneHotEncoderPreProcessor(IPreprocess):
+    def do(self, data):
+        enc = OneHotEncoder()
+        transformed = enc.fit_transform(data.values.reshape(-1, 1))
+        return enc, transformed.toarray()
+
+
+class LabelEncoderPreProcessor(IPreprocess):
+    def do(self, data):
+        enc = LabelEncoder()
+        return enc, enc.fit_transform(data.values.reshape(-1, 1))
+
+
+class PreprocessorFactory:
+    @classmethod
+    def create(cls, type):
+        if type == 'OneHotEncoder':
+            return OneHotEncoderPreProcessor()
+        elif type == 'LabelEncoder':
+            return LabelEncoderPreProcessor()
+
+
+class Preprocessor:
+
+    def __init__(self, db, preprocessed_data_id):
+        self.db = db
+        self.preprocessed_data_id = preprocessed_data_id
+
+    def preprocess(self):
+        orders = self.db[PREPROCESS_ORDER_COLLECTION_NAME].find({'preprocessed_data_id': self.preprocessed_data_id})
+        for order in orders:
+            pp_data = self.db[PREPROCESSED_DATA_COLLECTION_NAME].find_one({'_id': self.preprocessed_data_id})
+            df = pd.read_csv(StringIO(pp_data['data']))
+            processor, processed_data = PreprocessorFactory.create(order['type']).do(df.loc[:, order['column']])
+            columns_name = ["{0}.{1}".format(order['column'], c) for c in range(0, len(processed_data.shape))]
+            df_1 = pd.DataFrame(processed_data, columns=columns_name)
+            merged = pd.concat([df, df_1], axis=1)
+            data_buf = StringIO()
+            merged.to_csv(data_buf, index=False)
+            self.db[PREPROCESS_ORDER_COLLECTION_NAME].update_one({'_id': order['_id']}, {"$set": {'processor': pickle.dumps(processor)}})
+            self.db[PREPROCESSED_DATA_COLLECTION_NAME].update_one({'_id': pp_data['_id']}, {"$set": {'data': data_buf.getvalue()}})
+            self.db[COLUMNS_COLLECTION_NAME].insert_many([{'preprocessed_data_id': self.preprocessed_data_id, 'name': c, 'target': False} for c in columns_name])
+
+
 class Player:
 
     TEST_SIZE = 0.33
 
-    def __init__(self, package_name, class_name, data, train_columns, target_columns):
+    def __init__(self, analyze_id, package_name, class_name, data, train_columns, target_columns):
+        self.analyze_id = analyze_id
         self.package_name = package_name
         self.class_name = class_name
         self.data = data
         self.train_columns = train_columns
         self.target_columns = target_columns
 
-
     def play(self):
         module = importlib.import_module(self.package_name)
         instance = getattr(module, self.class_name)()
-        df = pd.read_csv(self.data)
-        train = df.loc[:, self.train_columns.split(',')]
-        target = df.loc[:, self.target_columns.strip()]
+        df = pd.read_csv(StringIO(self.data))
+        train = df.loc[:, self.train_columns]
+        target = df.loc[:, self.target_columns]
         X_train, X_test, y_train, y_test = train_test_split(train, target, test_size=self.TEST_SIZE)
         instance.fit(X_train, y_train)
         y_pred = instance.predict(X_test)
-        return accuracy_score(y_test, y_pred)
+        return {"analyze_id": self.analyze_id
+                    ,"accuracy": accuracy_score(y_test, y_pred)
+                    , "recall": recall_score(y_test, y_pred)
+                    , "f1": f1_score(y_test, y_pred)}
 
 
 def wrap_players(args):
     return args.play()
-    # return Player(args[0], args[1], args[2], args[3], args[4]).play()
 
 
 def main(db):
