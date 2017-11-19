@@ -2,6 +2,7 @@
 
 import unittest
 from players import *
+from db import *
 
 class TestPlayers(unittest.TestCase):
 
@@ -90,7 +91,7 @@ class TestPlayers(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.config = parse_config('development')
+        cls.config = parse_db_config('development')
         cls.con = db(cls.config)
         cls.__initialize()
         cls.__prepare_algorithms()
