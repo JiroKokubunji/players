@@ -44,14 +44,14 @@ class Preprocessor:
             pcr_queues = ProcessColumnsRequestQueues.objects.raw({"status": "pendding"})
             for q in pcr_queues:
                 pcr = q.process_columns_request_id
-                project_data = pcr.project_data_id
+                project_data = pcr.project_datum_id
                 data = project_data.data
                 df = pd.read_csv(StringIO(data))
                 if pcr.task is None:
                     types = df.dtypes.to_dict()
                     for column_name, type in types.items():
                         column = ProjectDatumColumns.objects.raw({
-                            'project_datum_id': pcr.project_data_id._id,
+                            'project_datum_id': pcr.project_datum_id._id,
                             'name': column_name
                         }).first()
                         column.type = str(type)
@@ -68,7 +68,7 @@ class Preprocessor:
                     column_types = df_1.dtypes.to_dict()
                     for column_name in columns_name:
                         ProjectDatumColumns(
-                            project_datum_id = pcr.project_data_id._id
+                            project_datum_id = pcr.project_datum_id._id
                             , active = True
                             , name = column_name
                             , type = str(column_types[column_name])

@@ -41,7 +41,7 @@ class ProjectData(MongoModel):
         final = True
 
 class ProcessColumnsRequests(MongoModel):
-    project_data_id = fields.ReferenceField(ProjectData)
+    project_datum_id = fields.ReferenceField(ProjectData)
     preprocess_algorithms_id = fields.ReferenceField(PreprocessAlgorithm)
     task = fields.CharField()
     target_columns = fields.ListField(fields.CharField())
@@ -63,10 +63,9 @@ class ProcessColumnsRequestQueues(MongoModel):
 
 
 class TrainingRequests(MongoModel):
-    project_data_id = fields.ReferenceField(ProjectData)
-    ml_algorithms_id = fields.ReferenceField(MachineLearningAlgorithms)
+    project_datum_id = fields.ReferenceField(ProjectData)
+    machine_learning_algorithm_id = fields.ReferenceField(MachineLearningAlgorithms)
     task = fields.CharField()
-    target_algorithms = fields.ListField(fields.CharField())
     updated_at = fields.DateTimeField()
     created_at = fields.DateTimeField()
 

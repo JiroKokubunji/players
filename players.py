@@ -56,33 +56,31 @@ class Dispacher:
 
     def __prepare_players(self):
         trgr_queues = TrainingRequestQueues.objects.raw({"status": "pendding"})
+        players = []
         for q in trgr_queues:
             # prepare data, and data
             trgr = q.training_request_id
-            project_data = trgr.project_data_id
+            project_data = trgr.project_datum_id
             data = project_data.data
-            target_algorithms = list(map(lambda x: ObjectId(x), trgr.target_algorithms))
-            algorithms = MachineLearningAlgorithms.objects.raw({'_id': {"$in" : target_algorithms}})
+            algorithm = trgr.machine_learning_algorithm_id
             # get valid columns and data
             trc = ProjectDatumColumns.objects.raw({
-                "project_datum_id" : trgr.project_data_id._id,
+                "project_datum_id" : trgr.project_datum_id._id,
                 "active" : True,
                 "target" : False
             })
             columns = list(map(lambda x: x.name, list(trc)))
             tgc = ProjectDatumColumns.objects.raw({
-                "project_datum_id" : trgr.project_data_id._id,
+                "project_datum_id" : trgr.project_datum_id._id,
                 "active" : True,
                 "target" : True
             }).first().name
-            players = []
-            for a in algorithms:
-                 players.append(Player(trgr._id
-                                      , a.module_name
-                                      , a.class_name
-                                      , data
-                                      , columns
-                                      , tgc))
+            players.append(Player(trgr._id
+                                 , algorithm.module_name
+                                 , algorithm.class_name
+                                 , data
+                                 , columns
+                                 , tgc))
         return players
 
 
