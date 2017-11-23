@@ -79,8 +79,8 @@ class Preprocessor:
                     merged = pd.concat([df, df_1], axis=1)
                     data_buf = StringIO()
                     merged.to_csv(data_buf, index=False)
-                    project_data.data = data_buf
-                    project_data.save
+                    project_data.data = data_buf.getvalue()
+                    project_data.save()
                 q.status = "completed"
                 q.save()
             break
