@@ -34,7 +34,7 @@ class ProcessColumnsRequests(MongoModel):
     project_data_id = fields.ReferenceField(ProjectData)
     preprocess_algorithms_id = fields.ReferenceField(PreprocessAlgorithm)
     task = fields.CharField()
-    target_columns = fields.CharField()
+    target_columns = fields.ListField(fields.CharField())
     updated_at = fields.DateTimeField()
     created_at = fields.DateTimeField()
 
