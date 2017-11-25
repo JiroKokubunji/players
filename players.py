@@ -123,8 +123,8 @@ class Player:
             return {"training_request_id": self.training_request_id
                         , "category": self.category
                         , "accuracy": accuracy_score(y_test, y_pred)
-                        , "recall": recall_score(y_test, y_pred)
-                        , "f1": f1_score(y_test, y_pred)}
+                        , "recall": recall_score(y_test, y_pred, average='macro')
+                        , "f1": f1_score(y_test, y_pred, average='macro')}
         elif self.category == 'regression':
              return {"training_request_id": self.training_request_id
                         , "category": self.category
