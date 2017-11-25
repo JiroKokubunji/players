@@ -42,7 +42,7 @@ class ProjectData(MongoModel):
 
 class ProcessColumnsRequests(MongoModel):
     project_datum_id = fields.ReferenceField(ProjectData)
-    preprocess_algorithms_id = fields.ReferenceField(PreprocessAlgorithm)
+    preprocess_algorithm_id = fields.ReferenceField(PreprocessAlgorithm)
     task = fields.CharField()
     target_columns = fields.ListField(fields.CharField())
     updated_at = fields.DateTimeField()
@@ -100,6 +100,15 @@ class ClassificationTrainingResults(MongoModel):
     accuracy = fields.CharField()
     recall = fields.CharField()
     f1 = fields.CharField()
+
+    class Meta:
+        final = True
+
+class RegressionTrainingResults(MongoModel):
+    training_request_id = fields.ReferenceField(TrainingRequests)
+    mse = fields.CharField()
+    mae = fields.CharField()
+    r2 = fields.CharField()
 
     class Meta:
         final = True

@@ -4,15 +4,19 @@ import importlib
 import argparse
 from multiprocessing import Pool
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, \
+                            recall_score, \
+                            f1_score, \
+                            mean_squared_error, \
+                            r2_score, \
+                            mean_absolute_error
 import pandas as pd
 from io import StringIO
 from models.models import ProjectDatumColumns, \
                             TrainingRequests, \
                             TrainingRequestQueues, \
-                            MachineLearningAlgorithms, \
-    ClassificationTrainingResults
-from bson.objectid import ObjectId
+                            ClassificationTrainingResults, \
+                            RegressionTrainingResults
 
 from db import setup_db
 
@@ -44,12 +48,20 @@ class Dispacher:
             break
 
     def __record_result(self, result):
-        ClassificationTrainingResults(
-            training_request_id=result['training_request_id'],
-            accuracy=result['accuracy'],
-            recall=result['recall'],
-            f1=result['f1'],
-        ).save()
+        if result['category'] == 'classification':
+            ClassificationTrainingResults(
+                training_request_id=result['training_request_id'],
+                accuracy=result['accuracy'],
+                recall=result['recall'],
+                f1=result['f1'],
+            ).save()
+        elif result['category'] == 'regression':
+            RegressionTrainingResults(
+                training_request_id=result['training_request_id'],
+                mse=result['mse'],
+                mae=result['mae'],
+                r2=result['r2'],
+            ).save()
         trgr_queue = TrainingRequests.objects.raw({"_id": result['training_request_id']}).first()
         trgr_queue.status = "completed"
         trgr_queue.save()
@@ -76,6 +88,7 @@ class Dispacher:
                 "target" : True
             }).first().name
             players.append(Player(trgr._id
+                                 , algorithm.category
                                  , algorithm.module_name
                                  , algorithm.class_name
                                  , data
@@ -88,8 +101,9 @@ class Player:
 
     TEST_SIZE = 0.33
 
-    def __init__(self, training_request_id, package_name, class_name, data, train_columns, target_columns):
+    def __init__(self, training_request_id, category, package_name, class_name, data, train_columns, target_columns):
         self.training_request_id = training_request_id
+        self.category = category
         self.package_name = package_name
         self.class_name = class_name
         self.data = data
@@ -105,10 +119,20 @@ class Player:
         x_train, x_test, y_train, y_test = train_test_split(train, target, test_size=self.TEST_SIZE)
         instance.fit(x_train, y_train)
         y_pred = instance.predict(x_test)
-        return {"training_request_id": self.training_request_id
-                    ,"accuracy": accuracy_score(y_test, y_pred)
-                    , "recall": recall_score(y_test, y_pred)
-                    , "f1": f1_score(y_test, y_pred)}
+        if self.category == 'classification':
+            return {"training_request_id": self.training_request_id
+                        , "category": self.category
+                        , "accuracy": accuracy_score(y_test, y_pred)
+                        , "recall": recall_score(y_test, y_pred)
+                        , "f1": f1_score(y_test, y_pred)}
+        elif self.category == 'regression':
+             return {"training_request_id": self.training_request_id
+                        , "category": self.category
+                        , "mse": mean_squared_error(y_test, y_pred)
+                        , "mae": mean_absolute_error(y_test, y_pred)
+                        , "r2": r2_score(y_test, y_pred)}
+        else:
+            pass
 
 
 def wrap_players(args):
