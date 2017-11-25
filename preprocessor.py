@@ -4,9 +4,9 @@ import abc
 import argparse
 from db import setup_db
 from io import StringIO
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder, Imputer
 import pandas as pd
-from models.models import ProcessColumnsRequestQueues, ProjectDatumColumns
+from models.models import ProcessColumnsRequestQueues, ProjectDatumColumns, ProcessColumnsRequestTargetColumns
 from bson.objectid import ObjectId
 
 
@@ -15,6 +15,12 @@ class IPreprocess(metaclass=abc.ABCMeta):
     def do(self):
         pass
 
+
+class ImputerPreProcessor(IPreprocess):
+    def do(self, data):
+        imp = Imputer()
+        transformed = imp.fit_transform(data.values.reshape(-1, 1))
+        return imp, transformed
 
 class OneHotEncoderPreProcessor(IPreprocess):
     def do(self, data):
@@ -36,6 +42,8 @@ class PreprocessorFactory:
             return OneHotEncoderPreProcessor()
         elif type == 'LabelEncoder':
             return LabelEncoderPreProcessor()
+        elif type == 'Imputer':
+            return ImputerPreProcessor()
 
 
 class Preprocessor:
@@ -47,7 +55,7 @@ class Preprocessor:
                 project_data = pcr.project_datum_id
                 data = project_data.data
                 df = pd.read_csv(StringIO(data))
-                if pcr.task is None:
+                if pcr.task == 'columns_type':
                     types = df.dtypes.to_dict()
                     for column_name, type in types.items():
                         column = ProjectDatumColumns.objects.raw({
@@ -57,10 +65,12 @@ class Preprocessor:
                         column.type = str(type)
                         column.save()
                 else:
-                    tc = list(map(lambda x: ObjectId(x), pcr.target_columns))
-                    columns = ProjectDatumColumns.objects.raw({'_id': {"$in" : tc}})
+                    tc = ProcessColumnsRequestTargetColumns.objects.raw({
+                        'process_columns_request_id': pcr._id
+                    })
+                    columns = list(map(lambda x: x.project_datum_column_id, list(tc)))
                     p = PreprocessorFactory.create(pcr.task)
-                    n = list(map(lambda x: x.name, list(columns)))
+                    n = list(map(lambda x: x.name, columns))
                     p, processed_data = p.do(df.loc[:, n].dropna())
                     column_num = processed_data.shape[1] if len(processed_data.shape) > 1 else 1
                     columns_name = ["{0}.{1}".format(n, c) for c in range(0, column_num)]

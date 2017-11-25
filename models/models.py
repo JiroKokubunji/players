@@ -34,17 +34,42 @@ class ProjectData(MongoModel):
     project_id = fields.ReferenceField(Projects)
     data = fields.CharField()
     name = fields.CharField()
+    description= fields.CharField()
     updated_at = fields.DateTimeField()
     created_at = fields.DateTimeField()
 
     class Meta:
         final = True
 
+
+class ProjectDatumColumns(MongoModel):
+    project_datum_id = fields.ReferenceField(ProjectData)
+    active = fields.BooleanField()
+    name = fields.CharField()
+    type = fields.CharField()
+    target = fields.BooleanField()
+    updated_at = fields.DateTimeField()
+    created_at = fields.DateTimeField()
+
+    class Meta:
+        final = True
+
+
 class ProcessColumnsRequests(MongoModel):
     project_datum_id = fields.ReferenceField(ProjectData)
     preprocess_algorithm_id = fields.ReferenceField(PreprocessAlgorithm)
     task = fields.CharField()
     target_columns = fields.ListField(fields.CharField())
+    updated_at = fields.DateTimeField()
+    created_at = fields.DateTimeField()
+
+    class Meta:
+        final = True
+
+
+class ProcessColumnsRequestTargetColumns(MongoModel):
+    process_columns_request_id = fields.ReferenceField(ProjectData)
+    project_datum_column_id = fields.ReferenceField(ProjectDatumColumns)
     updated_at = fields.DateTimeField()
     created_at = fields.DateTimeField()
 
@@ -83,17 +108,6 @@ class TrainingRequestQueues(MongoModel):
         final = True
 
 
-class ProjectDatumColumns(MongoModel):
-    project_datum_id = fields.ReferenceField(ProjectData)
-    active = fields.BooleanField()
-    name = fields.CharField()
-    type = fields.CharField()
-    target = fields.BooleanField()
-    updated_at = fields.DateTimeField()
-    created_at = fields.DateTimeField()
-
-    class Meta:
-        final = True
 
 class ClassificationTrainingResults(MongoModel):
     training_request_id = fields.ReferenceField(TrainingRequests)
