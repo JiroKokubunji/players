@@ -106,6 +106,7 @@ class Preprocessor:
                 'project_datum_id': pcr.project_datum_id._id,
                 'name': column_name
             }).first()
+            column.missing = len(df[column_name]) - df[column_name].count()
             column.mean = v['mean']
             column.std = v['std']
             column.count = v['count']

@@ -47,6 +47,7 @@ class ProjectDatumColumns(MongoModel):
     active = fields.BooleanField()
     name = fields.CharField()
     type = fields.CharField()
+    missing = fields.IntegerField()
     count = fields.IntegerField()
     mean = fields.FloatField()
     std = fields.FloatField()
