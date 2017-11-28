@@ -57,6 +57,7 @@ class Preprocessor:
                 df = pd.read_csv(StringIO(data))
                 if pcr.task == 'columns_type':
                     self.__process_column_type(df, pcr)
+                    self.__describe(df, pcr)
                 else:
                     tc = ProcessColumnsRequestTargetColumns.objects.raw({
                         'process_columns_request_id': pcr._id
@@ -98,6 +99,22 @@ class Preprocessor:
             column.type = str(type)
             column.save()
 
+    def __describe(self, df, pcr):
+        desc = df.describe().to_dict()
+        for column_name, v in desc.items():
+            column = ProjectDatumColumns.objects.raw({
+                'project_datum_id': pcr.project_datum_id._id,
+                'name': column_name
+            }).first()
+            column.mean = v['mean']
+            column.std = v['std']
+            column.count = v['count']
+            column.quarter = v['25%']
+            column.half = v['50%']
+            column.three_quarters = v['75%']
+            column.max = v['max']
+            column.min = v['min']
+            column.save()
 
 def main(db):
     pp = Preprocessor()
